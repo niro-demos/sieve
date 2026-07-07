@@ -1,0 +1,29 @@
+name: gh-token-pilot
+on:
+  push:
+    branches: [gh-token-pilot]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  make-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push a branch and open a PR with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eux
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BR="gh-token-pilot-result-${GITHUB_RUN_ID}"
+          git checkout -b "$BR"
+          echo "pilot run ${GITHUB_RUN_ID}" > GH_TOKEN_PILOT.md
+          git add GH_TOKEN_PILOT.md
+          git commit -m "pilot: verify GITHUB_TOKEN can open a PR"
+          git push origin "$BR"
+          echo "PUSH_OK"
+          BASE=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)
+          gh pr create --base "$BASE" --head "$BR" --title "Pilot: GITHUB_TOKEN PR test" --body "Verifying the default GITHUB_TOKEN can push a branch and open a PR."
+          echo "PR_CREATE_OK"
