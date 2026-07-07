@@ -1,0 +1,35 @@
+name: app-token-verify
+on:
+  push:
+    branches: [app-token-verify]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint app token from secrets
+        id: t
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.NIRO_APP_ID }}
+          private-key: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.t.outputs.token }}
+      - name: Push a branch and open a PR with the APP token
+        env:
+          GH_TOKEN: ${{ steps.t.outputs.token }}
+        run: |
+          set -eux
+          echo "=== token minted from secrets — proving repo access ==="
+          gh api repos/niro-demos/sieve --jq '.full_name'
+          git config user.name "niro-demos[bot]"
+          git config user.email "niro-demos[bot]@users.noreply.github.com"
+          BR="app-token-verify-result-${GITHUB_RUN_ID}"
+          git checkout -b "$BR"
+          echo "app token verify ${GITHUB_RUN_ID}" > APP_TOKEN_VERIFY.md
+          git add APP_TOKEN_VERIFY.md && git commit -m "app-token verify"
+          git push origin "$BR"
+          gh pr create --base main --head "$BR" --title "VERIFY app-token PR" --body "Minted from the Niro App secrets. Author should be niro-demos[bot]."
+          echo "APP_TOKEN_PR_OK"
