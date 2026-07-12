@@ -6,6 +6,8 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import secrets
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -17,6 +19,11 @@ USERS = {
     "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
+
+
+def authenticated_username():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    return TOKENS.get(token)
 
 
 @app.get("/")
@@ -33,8 +40,12 @@ def login():
     body = request.get_json(force=True, silent=True) or {}
     user = USERS.get(body.get("username"))
     if user and user["password"] == body.get("password"):
-        token = f"token-{user['id']}"
-        TOKENS[token] = body["username"]
+        username = body["username"]
+        for old_token, owner in list(TOKENS.items()):
+            if owner == username:
+                del TOKENS[old_token]
+        token = secrets.token_urlsafe(32)
+        TOKENS[token] = username
         return jsonify(token=token)
     return jsonify(error="invalid credentials"), 401
 
@@ -42,19 +53,33 @@ def login():
 # Return account details for the given id. A valid bearer token is required.
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if token not in TOKENS:
+    username = authenticated_username()
+    if username is None:
         return jsonify(error="unauthorized"), 401
-    for username, user in USERS.items():
-        if user["id"] == account_id:
-            return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
-    return jsonify(error="not found"), 404
+    user = USERS[username]
+    if user["id"] != account_id:
+        return jsonify(error="forbidden"), 403
+    return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
 
 
 # Return the full user directory.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    username = authenticated_username()
+    if username is None:
+        return jsonify(error="unauthorized"), 401
+    if not USERS[username]["admin"]:
+        return jsonify(error="forbidden"), 403
+    public_users = {
+        username: {
+            "id": user["id"],
+            "email": user["email"],
+            "balance": user["balance"],
+            "admin": user["admin"],
+        }
+        for username, user in USERS.items()
+    }
+    return jsonify(users=public_users)
 
 
 if __name__ == "__main__":
