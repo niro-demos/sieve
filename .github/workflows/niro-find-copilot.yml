@@ -36,11 +36,11 @@ jobs:
       - name: Verify Niro config proposal credentials
         shell: bash
         env:
-          NIRO_CONFIGS_APP_ID: ${{ secrets.NIRO_CONFIGS_APP_ID }}
-          NIRO_CONFIGS_APP_PRIVATE_KEY: ${{ secrets.NIRO_CONFIGS_APP_PRIVATE_KEY }}
+          NIRO_APP_CLIENT_ID: ${{ secrets.NIRO_APP_CLIENT_ID }}
+          NIRO_APP_PRIVATE_KEY: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
         run: |
-          if [ -z "$NIRO_CONFIGS_APP_ID" ] || [ -z "$NIRO_CONFIGS_APP_PRIVATE_KEY" ]; then
-            echo "::error::NIRO_CONFIGS_APP_ID and NIRO_CONFIGS_APP_PRIVATE_KEY are required"
+          if [ -z "$NIRO_APP_CLIENT_ID" ] || [ -z "$NIRO_APP_PRIVATE_KEY" ]; then
+            echo "::error::NIRO_APP_CLIENT_ID and NIRO_APP_PRIVATE_KEY are required"
             exit 1
           fi
 
@@ -63,8 +63,8 @@ jobs:
         id: niro-configs-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.NIRO_CONFIGS_APP_ID }}
-          private-key: ${{ secrets.NIRO_CONFIGS_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.NIRO_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NIRO_APP_PRIVATE_KEY }}
           owner: niro-demos
           repositories: niro-configs
 
