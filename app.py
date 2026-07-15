@@ -6,6 +6,9 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import secrets
+import time
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -17,6 +20,22 @@ USERS = {
     "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
+LOGIN_FAILURES = {}  # (normalized username, client IP) -> monotonic timestamps
+LOGIN_FAILURE_LIMIT = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+
+
+def authenticated_username():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    return TOKENS.get(token)
+
+
+def public_user(user):
+    """Return the allowlisted API representation of a stored user."""
+    return {
+        key: user[key]
+        for key in ("id", "email", "balance", "admin")
+    }
 
 
 @app.get("/")
@@ -31,19 +50,37 @@ def index():
 @app.post("/login")
 def login():
     body = request.get_json(force=True, silent=True) or {}
-    user = USERS.get(body.get("username"))
+    username = body.get("username")
+    normalized_username = username.casefold() if isinstance(username, str) else ""
+    failure_key = (normalized_username, request.remote_addr or "unknown")
+    now = time.monotonic()
+    recent_failures = [
+        timestamp
+        for timestamp in LOGIN_FAILURES.get(failure_key, [])
+        if now - timestamp < LOGIN_FAILURE_WINDOW_SECONDS
+    ]
+    if len(recent_failures) >= LOGIN_FAILURE_LIMIT:
+        LOGIN_FAILURES[failure_key] = recent_failures
+        return jsonify(error="too many login attempts"), 429
+
+    user = USERS.get(normalized_username)
     if user and user["password"] == body.get("password"):
-        token = f"token-{user['id']}"
-        TOKENS[token] = body["username"]
+        LOGIN_FAILURES.pop(failure_key, None)
+        for old_token, token_username in list(TOKENS.items()):
+            if token_username == normalized_username:
+                del TOKENS[old_token]
+        token = secrets.token_urlsafe(32)
+        TOKENS[token] = normalized_username
         return jsonify(token=token)
+    recent_failures.append(now)
+    LOGIN_FAILURES[failure_key] = recent_failures
     return jsonify(error="invalid credentials"), 401
 
 
 # Return account details for the given id. A valid bearer token is required.
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if token not in TOKENS:
+    if authenticated_username() is None:
         return jsonify(error="unauthorized"), 401
     for username, user in USERS.items():
         if user["id"] == account_id:
@@ -54,7 +91,14 @@ def account(account_id):
 # Return the full user directory.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    username = authenticated_username()
+    if username is None:
+        return jsonify(error="unauthorized"), 401
+    if not USERS[username]["admin"]:
+        return jsonify(error="forbidden"), 403
+    return jsonify(
+        users={username: public_user(user) for username, user in USERS.items()}
+    )
 
 
 if __name__ == "__main__":
