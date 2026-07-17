@@ -13,9 +13,17 @@ that a full Niro pentest runs **end to end in a few minutes**. It's a canary for
 
 ```bash
 docker build -t sieve .
-docker run --rm -p 5000:5000 sieve
+docker run --rm -p 5000:5000 \
+  -e SIEVE_ALICE_PASSWORD="$(openssl rand -base64 24)" \
+  -e SIEVE_BOB_PASSWORD="$(openssl rand -base64 24)" \
+  -e SIEVE_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
+  sieve
 # → http://localhost:5000/
 ```
+
+If a password environment variable is omitted, Sieve generates a random
+per-process password for that account at startup. No deployable account password
+is published in source.
 
 ## Endpoints
 
@@ -24,9 +32,17 @@ docker run --rm -p 5000:5000 sieve
 | `GET`  | `/`              | info + warning |
 | `POST` | `/login`         | body `{"username","password"}` → `{"token"}` |
 | `GET`  | `/accounts/<id>` | account details (requires a bearer token) |
-| `GET`  | `/admin/users`   | list all users |
+| `GET`  | `/admin/users`   | list non-secret user details (requires an administrator bearer token) |
 
-Seeded users: `alice` / `alice-pw`, `bob` / `bob-pw`, `admin` / `admin-pw`.
+Seeded users: `alice`, `bob`, and `admin`.
+
+## Test
+
+```bash
+python3 -m venv /tmp/sieve-venv
+/tmp/sieve-venv/bin/python -m pip install -r requirements.txt
+/tmp/sieve-venv/bin/python -m unittest discover -s tests -v
+```
 
 ## License
 
