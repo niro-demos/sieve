@@ -26,7 +26,9 @@ docker run --rm -p 5000:5000 sieve
 | `GET`  | `/accounts/<id>` | account details (requires a bearer token) |
 | `GET`  | `/admin/users`   | list all users |
 
-Seeded users: `alice` / `alice-pw`, `bob` / `bob-pw`, `admin` / `admin-pw`.
+Seeded users: `alice`, `bob`, and `admin`. Set `SIEVE_ALICE_PASSWORD`,
+`SIEVE_BOB_PASSWORD`, and `SIEVE_ADMIN_PASSWORD` to unique values before login;
+the previously published `*-pw` defaults are rejected.
 
 ## License
 
