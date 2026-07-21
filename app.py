@@ -45,10 +45,20 @@ def account(account_id):
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if token not in TOKENS:
         return jsonify(error="unauthorized"), 401
-    for username, user in USERS.items():
-        if user["id"] == account_id:
-            return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
-    return jsonify(error="not found"), 404
+    # Authorize: the token may only read the account it belongs to. Resolve the
+    # requesting user from the token and confirm it owns the requested id before
+    # disclosing anything. (If admins ever need cross-account reads, gate that on
+    # an explicit role check here rather than allowing any valid token through.)
+    requesting_username = TOKENS[token]
+    requester = USERS.get(requesting_username)
+    if not requester or requester["id"] != account_id:
+        return jsonify(error="forbidden"), 403
+    return jsonify(
+        id=requester["id"],
+        username=requesting_username,
+        email=requester["email"],
+        balance=requester["balance"],
+    )
 
 
 # Return the full user directory.
