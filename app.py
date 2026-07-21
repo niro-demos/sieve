@@ -39,11 +39,18 @@ def login():
     return jsonify(error="invalid credentials"), 401
 
 
+# Resolve the caller's bearer token to their user record, or None if the
+# token is missing/invalid. Shared by every endpoint that requires auth.
+def require_token():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    username = TOKENS.get(token)
+    return USERS.get(username) if username else None
+
+
 # Return account details for the given id. A valid bearer token is required.
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if token not in TOKENS:
+    if require_token() is None:
         return jsonify(error="unauthorized"), 401
     for username, user in USERS.items():
         if user["id"] == account_id:
@@ -51,9 +58,15 @@ def account(account_id):
     return jsonify(error="not found"), 404
 
 
-# Return the full user directory.
+# Return the full user directory. Requires a valid bearer token belonging to
+# an admin account.
 @app.get("/admin/users")
 def admin_users():
+    user = require_token()
+    if user is None:
+        return jsonify(error="unauthorized"), 401
+    if not user.get("admin"):
+        return jsonify(error="forbidden"), 403
     return jsonify(users=USERS)
 
 
