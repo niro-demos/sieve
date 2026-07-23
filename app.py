@@ -51,10 +51,21 @@ def account(account_id):
     return jsonify(error="not found"), 404
 
 
-# Return the full user directory.
+# Return the full user directory. Requires a bearer token for an admin account.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if token not in TOKENS:
+        return jsonify(error="unauthorized"), 401
+    caller = USERS.get(TOKENS[token])
+    if not caller or not caller.get("admin"):
+        return jsonify(error="forbidden"), 403
+    # Never serialize plaintext passwords, even to an authenticated admin.
+    directory = {
+        username: {k: v for k, v in user.items() if k != "password"}
+        for username, user in USERS.items()
+    }
+    return jsonify(users=directory)
 
 
 if __name__ == "__main__":
