@@ -6,6 +6,10 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import math
+import time
+from threading import Lock
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -17,6 +21,49 @@ USERS = {
     "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
+LOGIN_FAILURE_LIMIT = 5
+LOGIN_LOCKOUT_SECONDS = 60
+LOGIN_FAILURES = {}  # normalized username -> {"count": int, "locked_until": float}
+LOGIN_FAILURES_LOCK = Lock()
+
+
+def _login_key(username):
+    if not isinstance(username, str):
+        return ""
+    return username.strip().casefold()
+
+
+def _lockout_response(locked_until, now=None):
+    now = time.monotonic() if now is None else now
+    retry_after = max(1, math.ceil(locked_until - now))
+    response = jsonify(error="too many login attempts")
+    response.status_code = 429
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
+def _active_lockout_for(key, now):
+    record = LOGIN_FAILURES.get(key)
+    if not record:
+        return None
+
+    locked_until = record.get("locked_until", 0)
+    if locked_until > now:
+        return locked_until
+
+    if locked_until:
+        LOGIN_FAILURES.pop(key, None)
+    return None
+
+
+def _record_failed_login(key, now):
+    record = LOGIN_FAILURES.get(key, {"count": 0, "locked_until": 0})
+    count = record["count"] + 1
+    locked_until = 0
+    if count >= LOGIN_FAILURE_LIMIT:
+        locked_until = now + LOGIN_LOCKOUT_SECONDS
+    LOGIN_FAILURES[key] = {"count": count, "locked_until": locked_until}
+    return locked_until or None
 
 
 @app.get("/")
@@ -31,11 +78,30 @@ def index():
 @app.post("/login")
 def login():
     body = request.get_json(force=True, silent=True) or {}
-    user = USERS.get(body.get("username"))
+    username = _login_key(body.get("username"))
+
+    with LOGIN_FAILURES_LOCK:
+        now = time.monotonic()
+        locked_until = _active_lockout_for(username, now)
+    if locked_until:
+        return _lockout_response(locked_until, now)
+
+    user = USERS.get(username)
     if user and user["password"] == body.get("password"):
         token = f"token-{user['id']}"
-        TOKENS[token] = body["username"]
+        TOKENS[token] = username
+        with LOGIN_FAILURES_LOCK:
+            LOGIN_FAILURES.pop(username, None)
         return jsonify(token=token)
+
+    with LOGIN_FAILURES_LOCK:
+        now = time.monotonic()
+        locked_until = _active_lockout_for(username, now)
+        if not locked_until:
+            locked_until = _record_failed_login(username, now)
+    if locked_until:
+        return _lockout_response(locked_until, now)
+
     return jsonify(error="invalid credentials"), 401
 
 
