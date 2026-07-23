@@ -54,7 +54,20 @@ def account(account_id):
 # Return the full user directory.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if token not in TOKENS:
+        return jsonify(error="unauthorized"), 401
+
+    username = TOKENS[token]
+    if not USERS[username]["admin"]:
+        return jsonify(error="forbidden"), 403
+
+    directory_fields = ("id", "email", "balance", "admin")
+    users = {
+        username: {field: user[field] for field in directory_fields}
+        for username, user in USERS.items()
+    }
+    return jsonify(users=users)
 
 
 if __name__ == "__main__":
