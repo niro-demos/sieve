@@ -19,6 +19,18 @@ USERS = {
 TOKENS = {}  # token -> username
 
 
+def bearer_username():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    return TOKENS.get(token)
+
+
+def admin_directory_users():
+    return {
+        username: {"id": user["id"], "username": username, "email": user["email"]}
+        for username, user in USERS.items()
+    }
+
+
 @app.get("/")
 def index():
     return jsonify(
@@ -54,7 +66,13 @@ def account(account_id):
 # Return the full user directory.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    username = bearer_username()
+    user = USERS.get(username)
+    if not user:
+        return jsonify(error="unauthorized"), 401
+    if not user["admin"]:
+        return jsonify(error="forbidden"), 403
+    return jsonify(users=admin_directory_users())
 
 
 if __name__ == "__main__":
