@@ -43,10 +43,18 @@ def login():
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if token not in TOKENS:
+    username = TOKENS.get(token)
+    if not username:
         return jsonify(error="unauthorized"), 401
+
+    authenticated_user = USERS.get(username)
+    if not authenticated_user:
+        return jsonify(error="unauthorized"), 401
+
     for username, user in USERS.items():
         if user["id"] == account_id:
+            if authenticated_user["id"] != account_id:
+                return jsonify(error="forbidden"), 403
             return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
     return jsonify(error="not found"), 404
 
