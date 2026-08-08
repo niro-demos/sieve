@@ -6,6 +6,8 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import time
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -17,6 +19,11 @@ USERS = {
     "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
+LOGIN_FAILURES = {}  # (normalized username, client address) -> failure state
+
+MAX_LOGIN_FAILURES = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 300
+LOGIN_LOCKOUT_SECONDS = 60
 
 
 @app.get("/")
@@ -28,14 +35,56 @@ def index():
     )
 
 
+def _login_failure_key(username):
+    normalized_username = str(username or "").strip().casefold()
+    client_address = request.remote_addr or "unknown"
+    return normalized_username, client_address
+
+
+def _login_failure_state(key, now):
+    state = LOGIN_FAILURES.get(key)
+    if not state or now >= state["reset_at"]:
+        return {"count": 0, "reset_at": now + LOGIN_FAILURE_WINDOW_SECONDS, "locked_until": 0}
+    return state
+
+
+def _is_login_locked(key, now):
+    state = LOGIN_FAILURES.get(key)
+    if not state:
+        return False
+    if now >= state["reset_at"]:
+        LOGIN_FAILURES.pop(key, None)
+        return False
+    return now < state["locked_until"]
+
+
+def _record_failed_login(key, now):
+    state = _login_failure_state(key, now)
+    state["count"] += 1
+    if state["count"] >= MAX_LOGIN_FAILURES:
+        state["locked_until"] = now + LOGIN_LOCKOUT_SECONDS
+    LOGIN_FAILURES[key] = state
+    return state
+
+
 @app.post("/login")
 def login():
     body = request.get_json(force=True, silent=True) or {}
+    failure_key = _login_failure_key(body.get("username"))
+    now = time.monotonic()
+    if _is_login_locked(failure_key, now):
+        return jsonify(error="too many invalid login attempts; try again later"), 429
+
     user = USERS.get(body.get("username"))
     if user and user["password"] == body.get("password"):
+        LOGIN_FAILURES.pop(failure_key, None)
         token = f"token-{user['id']}"
         TOKENS[token] = body["username"]
         return jsonify(token=token)
+
+    state = _record_failed_login(failure_key, now)
+    if state["locked_until"] > now:
+        return jsonify(error="too many invalid login attempts; try again later"), 429
     return jsonify(error="invalid credentials"), 401
 
 
