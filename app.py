@@ -6,6 +6,8 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+from time import time
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -17,6 +19,14 @@ USERS = {
     "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
+
+# Per-username failed-login tracking for brute-force throttling (TC-21EB3215).
+# In-memory, matching the app's existing USERS/TOKENS pattern; for a real
+# deployment back this with a shared store (e.g. Redis) so it survives
+# restarts and works across multiple app instances.
+FAILED_ATTEMPTS = {}  # username -> (count, first_failure_ts)
+LOCKOUT_THRESHOLD = 5
+LOCKOUT_WINDOW_SECONDS = 60
 
 
 @app.get("/")
@@ -31,11 +41,23 @@ def index():
 @app.post("/login")
 def login():
     body = request.get_json(force=True, silent=True) or {}
-    user = USERS.get(body.get("username"))
+    username = body.get("username")
+    now = time()
+
+    count, first_ts = FAILED_ATTEMPTS.get(username, (0, now))
+    if count >= LOCKOUT_THRESHOLD and now - first_ts < LOCKOUT_WINDOW_SECONDS:
+        return jsonify(error="too many attempts, try again later"), 429
+
+    user = USERS.get(username)
     if user and user["password"] == body.get("password"):
+        FAILED_ATTEMPTS.pop(username, None)
         token = f"token-{user['id']}"
-        TOKENS[token] = body["username"]
+        TOKENS[token] = username
         return jsonify(token=token)
+
+    if now - first_ts >= LOCKOUT_WINDOW_SECONDS:
+        count, first_ts = 0, now
+    FAILED_ATTEMPTS[username] = (count + 1, first_ts)
     return jsonify(error="invalid credentials"), 401
 
 
