@@ -6,6 +6,8 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import secrets
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -33,7 +35,7 @@ def login():
     body = request.get_json(force=True, silent=True) or {}
     user = USERS.get(body.get("username"))
     if user and user["password"] == body.get("password"):
-        token = f"token-{user['id']}"
+        token = secrets.token_urlsafe(32)
         TOKENS[token] = body["username"]
         return jsonify(token=token)
     return jsonify(error="invalid credentials"), 401
@@ -42,7 +44,10 @@ def login():
 # Return account details for the given id. A valid bearer token is required.
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        return jsonify(error="unauthorized"), 401
+    token = authorization.removeprefix("Bearer ").strip()
     if token not in TOKENS:
         return jsonify(error="unauthorized"), 401
     for username, user in USERS.items():
