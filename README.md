@@ -24,7 +24,7 @@ docker run --rm -p 5000:5000 sieve
 | `GET`  | `/`              | info + warning |
 | `POST` | `/login`         | body `{"username","password"}` → `{"token"}` |
 | `GET`  | `/accounts/<id>` | account details (requires a bearer token) |
-| `GET`  | `/admin/users`   | list all users |
+| `GET`  | `/admin/users`   | list all users (requires an administrator bearer token) |
 
 Seeded users: `alice` / `alice-pw`, `bob` / `bob-pw`, `admin` / `admin-pw`.
 
