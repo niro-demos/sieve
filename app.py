@@ -51,10 +51,20 @@ def account(account_id):
     return jsonify(error="not found"), 404
 
 
-# Return the full user directory.
+# Return the full user directory (admin-only). Passwords are never serialized.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    if token not in TOKENS:
+        return jsonify(error="unauthorized"), 401
+    username = TOKENS[token]
+    if not USERS[username].get("admin"):
+        return jsonify(error="forbidden"), 403
+    safe_users = {
+        name: {k: v for k, v in user.items() if k != "password"}
+        for name, user in USERS.items()
+    }
+    return jsonify(users=safe_users)
 
 
 if __name__ == "__main__":
