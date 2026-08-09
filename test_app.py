@@ -4,8 +4,8 @@ Regression test for the forgeable-token vulnerability (TC-F5399DC5).
 Invariant: an attacker who knows a user's sequential account id must NOT be able
 to predict or forge that user's authentication token without the password.
 
-The app seeds an unauthenticated `/admin/users` directory that exposes every
-user's id. On the vulnerable code the issued token is the deterministic
+The app seeds users with hardcoded sequential account ids (alice=1, bob=2,
+admin=3). On the vulnerable code the issued token is the deterministic
 `token-<id>`, so an attacker who learns an id (say admin's, id=3) can forge
 `token-3` and read that account with no password, provided the user has logged in
 once since server start. After the fix the token is cryptographically random and
@@ -39,9 +39,8 @@ def _login(client, username, password):
 
 
 def test_id_derived_token_is_rejected_after_fix(client):
-    # Attacker learns every user's id from the unauthenticated directory.
-    users = client.get("/admin/users").get_json()["users"]
-    admin_id = users["admin"]["id"]  # 3, sequential and publicly enumerated
+    # admin's account id is the hardcoded sequential value 3 in app.py.
+    admin_id = 3
 
     # The victim (admin) logs in normally with their own credentials, minting an
     # active session. The attacker never sees admin's password.
@@ -60,8 +59,7 @@ def test_id_derived_token_is_rejected_after_fix(client):
 
 
 def test_issued_token_is_not_predictable_from_id(client):
-    users = client.get("/admin/users").get_json()["users"]
-    alice_id = users["alice"]["id"]
+    alice_id = 1  # hardcoded sequential id in app.py
 
     token = _login(client, "alice", "alice-pw")
 
@@ -84,8 +82,7 @@ def test_each_login_mints_a_fresh_token(client):
 
 
 def test_control_legitimate_token_reads_own_account(client):
-    users = client.get("/admin/users").get_json()["users"]
-    alice_id = users["alice"]["id"]
+    alice_id = 1  # hardcoded sequential id in app.py
     token = _login(client, "alice", "alice-pw")
 
     resp = client.get(f"/accounts/{alice_id}", headers={"Authorization": token})
@@ -94,8 +91,7 @@ def test_control_legitimate_token_reads_own_account(client):
 
 
 def test_control_invalid_token_is_rejected(client):
-    users = client.get("/admin/users").get_json()["users"]
-    alice_id = users["alice"]["id"]
+    alice_id = 1  # hardcoded sequential id in app.py
 
     resp = client.get(f"/accounts/{alice_id}", headers={"Authorization": "token-notreal"})
     assert resp.status_code == 401
