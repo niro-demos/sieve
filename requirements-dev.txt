@@ -1,0 +1,5 @@
+# Test/development dependencies for Sieve.
+# Install with:  pip install -r requirements-dev.txt
+# Then run:      pytest
+flask==3.0.3
+pytest>=8.0
