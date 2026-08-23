@@ -7,15 +7,35 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
 from flask import Flask, request, jsonify
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
 
 # Seeded, in-memory "database" — no persistence, instant start.
 USERS = {
-    "alice": {"id": 1, "password": "alice-pw", "email": "alice@sieve.test", "balance": 100,  "admin": False},
-    "bob":   {"id": 2, "password": "bob-pw",   "email": "bob@sieve.test",   "balance": 8400, "admin": False},
-    "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
+    "alice": {
+        "id": 1,
+        "password_hash": "pbkdf2:sha256:1000000$GpFtwjFukS8h1cH1$b7159b6273b21a81ac399838aaa73445df86ee717401a1ab75df4eee03f7c4f2",
+        "email": "alice@sieve.test",
+        "balance": 100,
+        "admin": False,
+    },
+    "bob": {
+        "id": 2,
+        "password_hash": "pbkdf2:sha256:1000000$g1hRjiMJFu6HHi6i$ba7ef4069020febffac6c1247ecce6721ce8ebc7d41910a082bed7210784da8e",
+        "email": "bob@sieve.test",
+        "balance": 8400,
+        "admin": False,
+    },
+    "admin": {
+        "id": 3,
+        "password_hash": "pbkdf2:sha256:1000000$QEeAHdel7QkvNylS$510efb7d527ca64bd11080603354a1ded0db235a8ae92433ac7642606ec89728",
+        "email": "admin@sieve.test",
+        "balance": 0,
+        "admin": True,
+    },
 }
+USER_PUBLIC_FIELDS = ("id", "email", "balance", "admin")
 TOKENS = {}  # token -> username
 
 
@@ -32,7 +52,12 @@ def index():
 def login():
     body = request.get_json(force=True, silent=True) or {}
     user = USERS.get(body.get("username"))
-    if user and user["password"] == body.get("password"):
+    password = body.get("password")
+    if (
+        user
+        and isinstance(password, str)
+        and check_password_hash(user["password_hash"], password)
+    ):
         token = f"token-{user['id']}"
         TOKENS[token] = body["username"]
         return jsonify(token=token)
@@ -54,7 +79,12 @@ def account(account_id):
 # Return the full user directory.
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    return jsonify(
+        users={
+            username: {field: user[field] for field in USER_PUBLIC_FIELDS}
+            for username, user in USERS.items()
+        }
+    )
 
 
 if __name__ == "__main__":
