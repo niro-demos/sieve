@@ -1,0 +1,7 @@
+# Test dependencies for the Sieve regression suite. Flask is pinned to match the
+# runtime image (see Dockerfile). Install with:
+#   pip install -r requirements-dev.txt
+# Run the suite with:
+#   pytest
+flask==3.0.3
+pytest>=8,<10
