@@ -42,8 +42,12 @@ class PasswordStorageSerializationTests(unittest.TestCase):
                 json={"username": self.username, "password": self.password},
             )
             self.assertEqual(login_response.status_code, 200)
+            token = login_response.get_json()["token"]
 
-            response = app.app.test_client().get("/admin/users")
+            response = app.app.test_client().get(
+                "/admin/users",
+                headers={"Authorization": f"Bearer {token}"},
+            )
             self.assertEqual(response.status_code, 200)
 
             serialized_user = response.get_json()["users"][self.username]
