@@ -1,0 +1,4 @@
+# Test/dev dependencies for running the pytest suite locally and in CI.
+# flask is the app's only runtime dependency (mirrors the pin in Dockerfile).
+flask==3.0.3
+pytest>=8,<10
