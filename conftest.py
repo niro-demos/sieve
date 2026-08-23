@@ -20,10 +20,16 @@ def client():
     """A Flask test client with an isolated, empty session-token store.
 
     `app.TOKENS` is a process-global dict; clearing it around each test keeps
-    tokens minted in one test from leaking into another.
+    tokens minted in one test from leaking into another. If a co-resident
+    security fix adds other process-global auth state (e.g. the login
+    brute-force throttle's `FAILED_LOGINS` counter), reset that too so a
+    lockout raised in one test can't spuriously fail an unrelated login in the
+    next; the `getattr` keeps this a no-op when that state isn't present.
     """
     sieve.TOKENS.clear()
+    getattr(sieve, "FAILED_LOGINS", {}).clear()
     sieve.app.config.update(TESTING=True)
     with sieve.app.test_client() as c:
         yield c
     sieve.TOKENS.clear()
+    getattr(sieve, "FAILED_LOGINS", {}).clear()
