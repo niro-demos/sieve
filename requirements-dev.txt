@@ -1,0 +1,4 @@
+# Test/runtime dependencies for the pytest regression suite.
+# Install with: pip install -r requirements-dev.txt
+flask==3.0.3
+pytest
