@@ -19,6 +19,12 @@ USERS = {
 TOKENS = {}  # token -> username
 
 
+def authenticated_user():
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    username = TOKENS.get(token)
+    return username, USERS.get(username)
+
+
 @app.get("/")
 def index():
     return jsonify(
@@ -42,18 +48,25 @@ def login():
 # Return account details for the given id. A valid bearer token is required.
 @app.get("/accounts/<int:account_id>")
 def account(account_id):
-    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
-    if token not in TOKENS:
+    requester_username, requester = authenticated_user()
+    if requester is None:
         return jsonify(error="unauthorized"), 401
     for username, user in USERS.items():
         if user["id"] == account_id:
+            if requester_username != username:
+                return jsonify(error="forbidden"), 403
             return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
     return jsonify(error="not found"), 404
 
 
-# Return the full user directory.
+# Return the full user directory to an administrator.
 @app.get("/admin/users")
 def admin_users():
+    _, requester = authenticated_user()
+    if requester is None:
+        return jsonify(error="unauthorized"), 401
+    if not requester["admin"]:
+        return jsonify(error="forbidden"), 403
     return jsonify(users=USERS)
 
 
