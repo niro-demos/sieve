@@ -23,6 +23,7 @@ docker run --rm -p 5000:5000 sieve
 |--------|------|-------|
 | `GET`  | `/`              | info + warning |
 | `POST` | `/login`         | body `{"username","password"}` → `{"token"}` |
+| `POST` | `/logout`        | revoke the current bearer token |
 | `GET`  | `/accounts/<id>` | account details (requires a bearer token) |
 | `GET`  | `/admin/users`   | list all users |
 
