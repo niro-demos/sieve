@@ -6,15 +6,41 @@ Sieve — a tiny API used as a local/CI smoke-test target for Niro
 ⚠️  Do NOT deploy Sieve or expose it to the internet. It is deliberately weak
     and exists only for local or CI testing — run it on localhost, nowhere else.
 """
+import os
+
 from flask import Flask, request, jsonify
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 
-# Seeded, in-memory "database" — no persistence, instant start.
+# Credentials are sourced from the environment at startup and stored ONLY as
+# non-reversible password hashes — never as plaintext, in source or in the
+# in-memory store. The values below are clearly-marked, overridable DEV-ONLY
+# defaults for local/CI smoke tests; a production deployment MUST supply real
+# secrets externally (e.g. `SIEVE_ADMIN_PASSWORD=...`) so that nothing usable
+# can ever be copied out of this file or its git history and replayed.
+_DEV_ONLY_DEFAULT_PASSWORDS = {
+    "alice": "dev-only-alice-secret",
+    "bob":   "dev-only-bob-secret",
+    "admin": "dev-only-admin-secret",
+}
+
+
+def _seed_password(username):
+    """Return a user's configured password (env var, else the dev-only
+    default). The caller hashes this immediately; it is never retained in
+    plaintext."""
+    return os.environ.get(
+        f"SIEVE_{username.upper()}_PASSWORD", _DEV_ONLY_DEFAULT_PASSWORDS[username]
+    )
+
+
+# Seeded, in-memory "database" — no persistence, instant start. Each account
+# stores only a werkzeug password *hash* ("password_hash"), not plaintext.
 USERS = {
-    "alice": {"id": 1, "password": "alice-pw", "email": "alice@sieve.test", "balance": 100,  "admin": False},
-    "bob":   {"id": 2, "password": "bob-pw",   "email": "bob@sieve.test",   "balance": 8400, "admin": False},
-    "admin": {"id": 3, "password": "admin-pw", "email": "admin@sieve.test", "balance": 0,    "admin": True},
+    "alice": {"id": 1, "password_hash": generate_password_hash(_seed_password("alice")), "email": "alice@sieve.test", "balance": 100,  "admin": False},
+    "bob":   {"id": 2, "password_hash": generate_password_hash(_seed_password("bob")),   "email": "bob@sieve.test",   "balance": 8400, "admin": False},
+    "admin": {"id": 3, "password_hash": generate_password_hash(_seed_password("admin")), "email": "admin@sieve.test", "balance": 0,    "admin": True},
 }
 TOKENS = {}  # token -> username
 
@@ -32,7 +58,7 @@ def index():
 def login():
     body = request.get_json(force=True, silent=True) or {}
     user = USERS.get(body.get("username"))
-    if user and user["password"] == body.get("password"):
+    if user and check_password_hash(user["password_hash"], body.get("password") or ""):
         token = f"token-{user['id']}"
         TOKENS[token] = body["username"]
         return jsonify(token=token)
