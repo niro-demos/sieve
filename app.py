@@ -45,8 +45,13 @@ def account(account_id):
     token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
     if token not in TOKENS:
         return jsonify(error="unauthorized"), 401
+    # Object-level authorization: bind the token's owner to the requested id.
+    # A signed-in user may only read their own account; admins may read any.
+    requesting_user = USERS[TOKENS[token]]
     for username, user in USERS.items():
         if user["id"] == account_id:
+            if account_id != requesting_user["id"] and not requesting_user.get("admin", False):
+                return jsonify(error="forbidden"), 403
             return jsonify(id=user["id"], username=username, email=user["email"], balance=user["balance"])
     return jsonify(error="not found"), 404
 
