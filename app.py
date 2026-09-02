@@ -51,10 +51,27 @@ def account(account_id):
     return jsonify(error="not found"), 404
 
 
-# Return the full user directory.
+# Return the user directory. Requires a valid bearer token belonging to an
+# admin account (same token scheme as `account()`), and never serializes any
+# credential material: the response is built from a positive allowlist of safe
+# fields, so it stays correct even if the credential field is later renamed or
+# switched to a hash.
+_SAFE_USER_FIELDS = ("id", "username", "email", "balance", "admin")
+
+
 @app.get("/admin/users")
 def admin_users():
-    return jsonify(users=USERS)
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    username = TOKENS.get(token)
+    if username is None:
+        return jsonify(error="unauthorized"), 401
+    if not USERS[username]["admin"]:
+        return jsonify(error="forbidden"), 403
+    safe_users = {}
+    for name, record in USERS.items():
+        source = {**record, "username": name}
+        safe_users[name] = {f: source[f] for f in _SAFE_USER_FIELDS if f in source}
+    return jsonify(users=safe_users)
 
 
 if __name__ == "__main__":
